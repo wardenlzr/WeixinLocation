@@ -2,22 +2,31 @@ package com.weixin.location;
 
 import android.Manifest;
 import android.animation.ObjectAnimator;
+import android.app.Activity;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
+import android.support.design.widget.BottomSheetBehavior;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.Log;
+import android.view.Display;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.amap.api.location.AMapLocation;
@@ -53,9 +62,8 @@ import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
+    private Activity activity;
     private MapView        mMapView;
-    private ImageView      mIvBack;
-    private ImageView      mIvSearch;
     private ImageView      mIvLocation;
     private ImageView      mIvCenterLocation;
     private Button         mBtSend;
@@ -92,11 +100,14 @@ public class MainActivity extends AppCompatActivity {
     // 要申请的权限
     private String[] permissions = {Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.CALL_PHONE,
             Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_LOCATION_EXTRA_COMMANDS};
+    private BottomSheetBehavior behavior;
+    private EditText etSearch;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        activity = this;
         initView();
         initDatas(savedInstanceState);
         initListener();
@@ -160,16 +171,92 @@ public class MainActivity extends AppCompatActivity {
             locationClient.onDestroy();
         }
     }
-
+    public  int dp2px(float dpValue) {
+        final float scale = MainActivity.this.getResources().getDisplayMetrics().density;
+        return (int) (dpValue * scale + 0.5f);
+    }
+    public int getStatusBarHeight() {
+        Resources resources = MainActivity.this.getResources();
+        int resourceId = resources.getIdentifier("status_bar_height", "dimen", "android");
+        int height = resources.getDimensionPixelSize(resourceId);
+        return height;
+    }
     private void initView() {
         mMapView = (MapView) findViewById(R.id.map);
-        mIvBack = (ImageView) findViewById(R.id.iv_back);
-        mIvSearch = (ImageView) findViewById(R.id.iv_search);
         mIvLocation = (ImageView) findViewById(R.id.iv_location);
         mIvCenterLocation = (ImageView) findViewById(R.id.iv_center_location);
         mBtSend = (Button) findViewById(R.id.bt_send);
         mRecyclerView = (RecyclerView) findViewById(R.id.recyclerview);
+        etSearch = (EditText) findViewById(R.id.et);
+        etSearch.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
 
+            @Override
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {}
+
+            @Override
+            public void afterTextChanged(Editable editable) {
+                String text = etSearch.getText().toString();
+                if (TextUtils.isEmpty(text)) {
+                    //清空刷新
+                    mAddressAdapter.clear();
+                } else {
+                    //搜索
+                    mQuery = new PoiSearch.Query(text, "", null);//第一个参数表示搜索字符串，第二个参数表示poi搜索类型，第三个参数表示poi搜索区域（空字符串代表全国）
+                    mQuery.setPageSize(20);// 设置每页最多返回多少条poiitem
+                    mQuery.setPageNum(0);// 设置查第一页
+                    mPoiSearch = new PoiSearch(activity, mQuery);
+                    mPoiSearch.setOnPoiSearchListener(mOnPoiSearchListener);
+                    mPoiSearch.searchPOIAsyn();// 异步搜索
+                }
+            }
+        });
+        RelativeLayout bottomSheet = findViewById(R.id.bottom_sheet);
+        behavior = BottomSheetBehavior.from(bottomSheet);
+        mIvLocation.post(new Runnable() {
+            @Override
+            public void run() {
+                Display display = getWindowManager().getDefaultDisplay();
+                int height = display.getHeight();
+                Log.e("BG", mMapView.getBottom() + "" + mMapView.getHeight() + getStatusBarHeight());
+                int[] aaa = new int[2];
+                mMapView.getLocationOnScreen(aaa);
+                behavior.setPeekHeight(height - aaa[1] - mMapView.getHeight() + getStatusBarHeight() + dp2px(50));
+            }
+        });
+
+        behavior.setBottomSheetCallback(new BottomSheetBehavior.BottomSheetCallback() {
+            @Override
+            public void onStateChanged(@NonNull View bottomSheet, @BottomSheetBehavior.State int newState) {
+                Log.e("BG", "onStateChanged() called with: bottomSheet = [" + bottomSheet + "], newState = [" + newState + "]");
+                String state = "null";
+                switch (newState) {
+                    case 1:
+                        state = "STATE_DRAGGING";//过渡状态此时用户正在向上或者向下拖动bottom sheet
+                        break;
+                    case 2:
+                        state = "STATE_SETTLING"; // 视图从脱离手指自由滑动到最终停下的这一小段时间
+                        break;
+                    case 3:
+                        state = "STATE_EXPANDED"; //处于完全展开的状态
+
+                        break;
+                    case 4:
+                        state = "STATE_COLLAPSED"; //默认的折叠状态
+                        break;
+                    case 5:
+                        state = "STATE_HIDDEN"; //下滑动完全隐藏 bottom sheet
+                        break;
+                }
+
+            }
+
+            @Override
+            public void onSlide(@NonNull View bottomSheet, float slideOffset) {
+//                Log.d("BottomSheetDemo", "slideOffset:" + slideOffset);
+            }
+        });
     }
 
     private void initListener() {
@@ -282,12 +369,8 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View view) {
                 switch (view.getId()) {
-                    case R.id.iv_back:
+                    case R.id.tv_back:
                         finish();
-                        break;
-                    case R.id.iv_search:
-//                        Toast.makeText(MainActivity.this, "搜索", Toast.LENGTH_SHORT).show();
-                        startActivityForResult(new Intent(MainActivity.this, SearchActivity.class), SEARCHREQUESTCODE);
                         break;
                     case R.id.iv_location:
 //                        Toast.makeText(MainActivity.this, "定位", Toast.LENGTH_SHORT).show();
@@ -317,8 +400,6 @@ public class MainActivity extends AppCompatActivity {
             }
         };
 
-        mIvBack.setOnClickListener(mOnClickListener);
-        mIvSearch.setOnClickListener(mOnClickListener);
         mIvLocation.setOnClickListener(mOnClickListener);
         mBtSend.setOnClickListener(mOnClickListener);
 

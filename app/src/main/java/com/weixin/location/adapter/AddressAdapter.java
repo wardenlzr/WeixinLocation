@@ -31,6 +31,10 @@ public class AddressAdapter extends RecyclerView.Adapter<AddressAdapter.MyHolder
         this.mList = list;
     }
 
+    public void clear() {
+        this.mList.clear();
+        notifyDataSetChanged();
+    }
     public void setList(List<PoiItem> list) {
         this.mList = list;
         selectPosition = -1;
